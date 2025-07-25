@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+	</PropertyGroup>
+	
+	<ItemGroup>
+    <EmbeddedResource Include="PatchLogic\Resources\*.zip" />
+	</ItemGroup>
+	
+	<ItemGroup>
+	  <ProjectReference Include="..\LibBundledGGPK3\LibBundledGGPK3.csproj" />
+	</ItemGroup>
+	
+</Project>
