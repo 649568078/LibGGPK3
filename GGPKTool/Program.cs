@@ -57,6 +57,22 @@ class Program
             Console.Error.WriteLine("Exception: " + ex);
             return 1;
         }
+        finally
+        {
+            try
+            {
+                if (Environment.UserInteractive)  // 只有在有控制台的情况下才等键盘
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("按任意键退出...");
+                    Console.ReadKey(true);
+                }
+            }
+            catch
+            {
+                // 忽略异常，避免在后台调用时崩溃
+            }
+        }
     }
 
     static int RunCommand(LibBundle3.Index index, string command, string? internalPath, string? filePath)
