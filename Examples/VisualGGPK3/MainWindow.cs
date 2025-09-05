@@ -20,9 +20,12 @@ using Pfim;
 using SystemExtensions;
 
 using VisualGGPK3.TreeItems;
+using Padding = Eto.Drawing.Padding;
 
 namespace VisualGGPK3;
-public sealed class MainWindow : Form {
+
+public sealed class MainWindow : Form
+{
 	private BundledGGPK? Ggpk;
 	internal LibBundle3.Index? Index;
 #pragma warning disable CS0618
@@ -32,11 +35,16 @@ public sealed class MainWindow : Form {
 	private readonly TextArea TextPanel = new() { ReadOnly = true, Text = "This program hasn't been completed yet" };
 	private readonly ImageView ImagePanel = new();
 	private readonly GridView DatPanel = new();
+	private readonly Panel ContentHost = new(); // 承载 TextPanel/ImagePanel/DatPanel 的占位容器
+	private readonly Label SourceLabel = new() { TextColor = Colors.Gray };
+	private readonly DynamicLayout RightLayout = new() { Spacing = new Size(4, 4), Padding = new Padding(4) };
+
 
 	private string? imageName;
 	private ITreeItem? clickedItem;
 
-	public MainWindow(string? path = null) {
+	public MainWindow(string? path = null)
+	{
 #if Mac
 		static void closed(object? sender, EventArgs e) => Application.Instance.Quit();
 		Closed += closed;
@@ -55,7 +63,8 @@ public sealed class MainWindow : Form {
 			Size = new(1280, 720);
 #if Windows
 #pragma warning disable CS0618 // Obsolete
-		static void WindowsFix(TreeView tree) {
+		static void WindowsFix(TreeView tree)
+		{
 			var etree = ((Eto.Wpf.Forms.Controls.TreeViewHandler)tree.Handler).Control; // EtoTreeView
 #pragma warning restore CS0618
 			// Virtualizing
@@ -74,14 +83,25 @@ public sealed class MainWindow : Form {
 #endif
 		GGPKTree.SelectionChanged += OnSelectionChanged;
 		BundleTree.SelectionChanged += OnSelectionChanged;
+		// 右侧布局：上=ContentHost（内容可替换），下=SourceLabel（固定）
+		ContentHost.Content = TextPanel; // 初始放一个 TextPanel
+		RightLayout.Add(ContentHost, yscale: true);
+		var sourceLabelHost = new Panel
+		{
+			Padding = new Eto.Drawing.Padding(6, 3),
+			Content  = SourceLabel
+		};
+		RightLayout.Add(sourceLabelHost);
 
-		var layout = new Splitter() {
+		var layout = new Splitter()
+		{
 			Panel1 = GGPKTree,
 			Panel1MinimumSize = 10,
-			Panel2 = new Splitter() {
+			Panel2 = new Splitter()
+			{
 				Panel1 = BundleTree,
 				Panel1MinimumSize = 10,
-				Panel2 = TextPanel,
+				Panel2 = RightLayout,
 				Panel2MinimumSize = 10,
 				SplitterWidth = 4,
 				Position = 240
@@ -100,18 +120,22 @@ public sealed class MainWindow : Form {
 		Content = layout;
 		LoadComplete += OnLoadComplete;
 
-		async void OnLoadComplete(object? sender, EventArgs e) {
+		async void OnLoadComplete(object? sender, EventArgs e)
+		{
 			LoadComplete -= OnLoadComplete;
 			await Task.Yield();
-			if (path is null || !File.Exists(path)) {
-				using var ofd = new OpenFileDialog() {
+			if (path is null || !File.Exists(path))
+			{
+				using var ofd = new OpenFileDialog()
+				{
 					FileName = "Content.ggpk",
 					Filters = {
 						new("GGPK/Index File", ".ggpk", ".bin"),
 						allFilesFilters
 					}
 				};
-				if (ofd.ShowDialog(this) != DialogResult.Ok) {
+				if (ofd.ShowDialog(this) != DialogResult.Ok)
+				{
 					Close();
 					return;
 				}
@@ -119,8 +143,10 @@ public sealed class MainWindow : Form {
 			}
 
 			int failed;
-			if (path.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)) {
-				failed = await Task.Run(() => {
+			if (path.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+			{
+				failed = await Task.Run(() =>
+				{
 					Index = new(path, false); // false to parsePaths manually
 					return Index.ParsePaths();
 				});
@@ -129,18 +155,28 @@ public sealed class MainWindow : Form {
 				GGPKTree.Enabled = false;
 				layout.Panel1MinimumSize = 0;
 				layout.Position = 0;
-			} else {
-				failed = await Task.Run(() => {
+			}
+			else
+			{
+				failed = await Task.Run(() =>
+				{
 					Ggpk = new(path, false); // false to parsePaths manually
 					Index = Ggpk.Index;
 					return Index.ParsePaths();
 				});
-				GGPKTree.DataStore = new GGPKDirectoryTreeItem(Ggpk!.Root, null, GGPKTree) {
+				GGPKTree.DataStore = new GGPKDirectoryTreeItem(Ggpk!.Root, null, GGPKTree)
+				{
 					Expanded = true
 				};
 			}
-			var buildTreeTask = failed == Index!.Files.Count ? Task.FromResult<BundleDirectoryTreeItem>(null!) :
-				Task.Run(() => (BundleDirectoryTreeItem)Index!.BuildTree(BundleDirectoryTreeItem.GetFuncCreateInstance(BundleTree), BundleFileTreeItem.CreateInstance, true));
+			var buildTreeTask = failed == Index!.Files.Count
+				? Task.FromResult<BundleDirectoryTreeItem>(null!)
+				: Task.Run(() => (BundleDirectoryTreeItem)Index!.BuildTree(
+					BundleDirectoryTreeItem.GetFuncCreateInstance(BundleTree),
+					(record, parent) => BundleFileTreeItem.CreateInstance(record, parent),
+					true));
+
+
 			if (failed != 0)
 				TextPanel.Text += $"\n\nWarning: There're {failed} files failed to parse the path, your ggpk file may be broken.";
 
@@ -150,20 +186,25 @@ public sealed class MainWindow : Form {
 				new ButtonMenuItem(OnCopyPathClicked) { Text = "Copy Path" },
 				new ButtonMenuItem(OnExportDdsClicked) { Text = "Export .dds to .png" }
 			);
-			GGPKTree.MouseUp += (s, e) => {
-				if (e.Buttons == MouseButtons.Alternate && GGPKTree.GetNodeAt(e.Location) is ITreeItem item) {
+			GGPKTree.MouseUp += (s, e) =>
+			{
+				if (e.Buttons == MouseButtons.Alternate && GGPKTree.GetNodeAt(e.Location) is ITreeItem item)
+				{
 					clickedItem = item;
 					menu.Show(GGPKTree);
 				}
 			};
-			BundleTree.MouseUp += (s, e) => {
-				if (e.Buttons == MouseButtons.Alternate && BundleTree.GetNodeAt(e.Location) is ITreeItem item) {
+			BundleTree.MouseUp += (s, e) =>
+			{
+				if (e.Buttons == MouseButtons.Alternate && BundleTree.GetNodeAt(e.Location) is ITreeItem item)
+				{
 					clickedItem = item;
 					menu.Show(BundleTree);
 				}
 			};
 			var menu2 = new ContextMenu(new ButtonMenuItem(OnSaveAsPngClicked) { Text = "Save as png" });
-			ImagePanel.MouseUp += (s, e) => {
+			ImagePanel.MouseUp += (s, e) =>
+			{
 				if (e.Buttons == MouseButtons.Alternate)
 					menu2.Show(ImagePanel, e.Location);
 			};
@@ -175,7 +216,8 @@ public sealed class MainWindow : Form {
 			BundleTree.DragDrop += OnDragDrop;
 			BundleTree.AllowDrop = true;
 
-			if (failed == Index.Files.Count) { // All failed
+			if (failed == Index.Files.Count)
+			{ // All failed
 				BundleTree.DataStore = null;
 				return;
 			}
@@ -186,7 +228,8 @@ public sealed class MainWindow : Form {
 		}
 	}
 
-	private void OnSelectionChanged(object? sender, EventArgs _) {
+	private void OnSelectionChanged(object? sender, EventArgs _)
+	{
 #pragma warning disable CS0618 // Obsolete
 		var item = (sender as TreeView)?.SelectedItem;
 #pragma warning restore CS0618
@@ -196,19 +239,24 @@ public sealed class MainWindow : Form {
 		if (item.Expandable)
 			item.Expanded = !item.Expanded;
 #endif
-		if (item is FileTreeItem fileItem) {
+		if (item is FileTreeItem fileItem)
+		{
 			var panel = (Splitter)((Splitter)Content).Panel2;
 			var format = fileItem.Format;
-			try {
-				if (ImagePanel.Image is not null) {
+			try
+			{
+				if (ImagePanel.Image is not null)
+				{
 					ImagePanel.Image.Dispose();
 					ImagePanel.Image = null;
 				}
-				switch (format) {
+				switch (format)
+				{
 					case FileTreeItem.DataFormat.Text:
 						var span = fileItem.Read().Span;
 #if Windows
-						if (span.Length > 204800) {
+						if (span.Length > 204800)
+						{
 							MessageBox.Show(this, "This text file is too large, only the first 100KB will be shown", "Warning", MessageBoxButtons.OK, MessageBoxType.Warning);
 							span = span[..102400];
 						}
@@ -220,11 +268,13 @@ public sealed class MainWindow : Form {
 						else if (fileItem.Name.EndsWith(".amd", StringComparison.OrdinalIgnoreCase))
 							TextPanel.Text = new string(MemoryMarshal.Cast<byte, char>(span));
 						else
-							unsafe {
+							unsafe
+							{
 								fixed (byte* p = span)
 									TextPanel.Text = new string((sbyte*)p, 0, span.Length);
 							}
-						panel.Panel2 = TextPanel;
+						ContentHost.Content = TextPanel;
+						SourceLabel.Text = $"来源: {GetSourceBin(fileItem)}  |  路径: {fileItem.GetPath()}";
 						break;
 					case FileTreeItem.DataFormat.Image:
 						imageName = Path.GetFileNameWithoutExtension(fileItem.Name);
@@ -232,7 +282,8 @@ public sealed class MainWindow : Form {
 							ImagePanel.Image = new Bitmap(g.Record.Read());
 						else
 							ImagePanel.Image = new Bitmap(fileItem.Read().ToArray());
-						panel.Panel2 = ImagePanel;
+						ContentHost.Content = ImagePanel;
+						SourceLabel.Text = $"来源: {GetSourceBin(fileItem)}  |  路径: {fileItem.GetPath()}";
 						break;
 					case FileTreeItem.DataFormat.DdsImage:
 						imageName = Path.GetFileNameWithoutExtension(fileItem.Name);
@@ -243,9 +294,11 @@ public sealed class MainWindow : Form {
 						else
 							data = fileItem.Read().Span;
 
-						if (fileItem.Name.EndsWith(".header")) {
+						if (fileItem.Name.EndsWith(".header"))
+						{
 							data = data[0] == 3 ? data[28..] : data[16..];
-							while (data[0] == '*') {
+							while (data[0] == '*')
+							{
 								data = data[1..];
 								if (data.Length > 384 * 1024)
 									throw new StackOverflowException();
@@ -260,29 +313,37 @@ public sealed class MainWindow : Form {
 						}
 
 						ImagePanel.Image = GetDdsBitmap(data);
-						panel.Panel2 = ImagePanel;
+						ContentHost.Content = ImagePanel;
+						SourceLabel.Text = $"来源: {GetSourceBin(fileItem)}  |  路径: {fileItem.GetPath()}";
 						break;
 					case FileTreeItem.DataFormat.Dat:
 					// TODO: LibDat3
-					// 	panel.Panel2 = DatPanel;
+					// 	ContentHost.Content = DatPanel;
 					// 	break;
 					default:
 						TextPanel.Text = "";
-						panel.Panel2 = TextPanel;
+						ContentHost.Content = TextPanel;
+						SourceLabel.Text = $"来源: {GetSourceBin(fileItem)}  |  路径: {fileItem.GetPath()}";
 						// DatPanel.DataStore = null;
 						break;
 				}
-			} catch (Exception ex) {
+			}
+			catch (Exception ex)
+			{
 				TextPanel.Text = ex.ToString();
-				panel.Panel2 = TextPanel;
+				ContentHost.Content = TextPanel;
+				SourceLabel.Text = $"来源: {GetSourceBin(fileItem)}  |  路径: {fileItem.GetPath()}";
 			}
 		}
 	}
 
-	private void OnExtractClicked(object? sender, EventArgs _) {
-		if (clickedItem is FileTreeItem fi) {
+	private void OnExtractClicked(object? sender, EventArgs _)
+	{
+		if (clickedItem is FileTreeItem fi)
+		{
 			var ext = "*" + Path.GetExtension(fi.Name);
-			var sfd = new SaveFileDialog() {
+			var sfd = new SaveFileDialog()
+			{
 				FileName = fi.Name,
 				Filters = {
 					new(ext, ext),
@@ -296,8 +357,11 @@ public sealed class MainWindow : Form {
 			using (var f = File.OpenHandle(sfd.FileName, FileMode.Create, FileAccess.Write, FileShare.None, FileOptions.None, span.Length))
 				RandomAccess.Write(f, span, 0);
 			MessageBox.Show(this, $"Extracted {span.Length} bytes to\r\n{sfd.FileName}", "Done", MessageBoxType.Information);
-		} else if (clickedItem is DirectoryTreeItem di) {
-			var sfd = new SaveFileDialog() {
+		}
+		else if (clickedItem is DirectoryTreeItem di)
+		{
+			var sfd = new SaveFileDialog()
+			{
 				CheckFileExists = false,
 				FileName = di.Name + ".dir",
 				Filters = { allFilesFilters }
@@ -309,10 +373,13 @@ public sealed class MainWindow : Form {
 		}
 	}
 
-	private void OnReplaceClicked(object? sender, EventArgs _) {
-		if (clickedItem is FileTreeItem fi) {
+	private void OnReplaceClicked(object? sender, EventArgs _)
+	{
+		if (clickedItem is FileTreeItem fi)
+		{
 			var ext = "*" + Path.GetExtension(fi.Name);
-			using var ofd = new OpenFileDialog() {
+			using var ofd = new OpenFileDialog()
+			{
 				FileName = fi.Name,
 				Filters = {
 					new(ext, ext),
@@ -324,8 +391,11 @@ public sealed class MainWindow : Form {
 			var b = File.ReadAllBytes(ofd.FileName);
 			fi.Write(b);
 			MessageBox.Show(this, $"Replaced {b.Length} bytes from\r\n{ofd.FileName}", "Done", MessageBoxType.Information);
-		} else if (clickedItem is DirectoryTreeItem di) {
-			using var ofd = new OpenFileDialog() {
+		}
+		else if (clickedItem is DirectoryTreeItem di)
+		{
+			using var ofd = new OpenFileDialog()
+			{
 				CheckFileExists = false,
 				FileName = "{OPEN IN A FOLDER}",
 				Filters = { allFilesFilters }
@@ -337,14 +407,16 @@ public sealed class MainWindow : Form {
 		}
 
 		var bd2 = (GGPKTree.DataStore as GGPKDirectoryTreeItem)?.ChildItems.FirstOrDefault(t => t.Text == "Bundles2");
-		if (bd2 is GGPKDirectoryTreeItem g) {
+		if (bd2 is GGPKDirectoryTreeItem g)
+		{
 			g._ChildItems = null; // Update tree
 			GGPKTree.RefreshItem(g);
 		}
 		OnSelectionChanged(BundleTree, EventArgs.Empty);
 	}
 
-	private void OnCopyPathClicked(object? sender, EventArgs _) {
+	private void OnCopyPathClicked(object? sender, EventArgs _)
+	{
 		if (clickedItem is null)
 			return;
 		Clipboard.Instance.Text = clickedItem is DirectoryTreeItem di
@@ -352,8 +424,10 @@ public sealed class MainWindow : Form {
 			: ((FileTreeItem)clickedItem).GetPath();
 	}
 
-	private void OnSaveAsPngClicked(object? sender, EventArgs _) {
-		var sfd = new SaveFileDialog {
+	private void OnSaveAsPngClicked(object? sender, EventArgs _)
+	{
+		var sfd = new SaveFileDialog
+		{
 			FileName = (imageName ?? "unnamed") + ".png",
 			Filters = {
 				new("Png File", "*.png"),
@@ -366,13 +440,17 @@ public sealed class MainWindow : Form {
 		(ImagePanel.Image as Bitmap)!.Save(sfd.FileName, Eto.Drawing.ImageFormat.Png);
 	}
 
-	private void OnExportDdsClicked(object? sender, EventArgs _) {
-		if (clickedItem is FileTreeItem fi) {
-			if (fi.Format != FileTreeItem.DataFormat.DdsImage) {
+	private void OnExportDdsClicked(object? sender, EventArgs _)
+	{
+		if (clickedItem is FileTreeItem fi)
+		{
+			if (fi.Format != FileTreeItem.DataFormat.DdsImage)
+			{
 				MessageBox.Show(this, "Selected file is not a dds image", "Error", MessageBoxType.Error);
 				return;
 			}
-			var sfd = new SaveFileDialog() {
+			var sfd = new SaveFileDialog()
+			{
 				FileName = Path.GetFileNameWithoutExtension(fi.Name) + ".png",
 				Filters = {
 					new("*.png", "*.png"),
@@ -384,8 +462,11 @@ public sealed class MainWindow : Form {
 			Directory.CreateDirectory(Path.GetDirectoryName(sfd.FileName)!);
 			GetDdsBitmap(fi.Read().Span).Save(sfd.FileName, Eto.Drawing.ImageFormat.Png);
 			MessageBox.Show(this, $"Saved {sfd.FileName}", "Done", MessageBoxType.Information);
-		} else if (clickedItem is DirectoryTreeItem di) {
-			var sfd = new SaveFileDialog() {
+		}
+		else if (clickedItem is DirectoryTreeItem di)
+		{
+			var sfd = new SaveFileDialog()
+			{
 				CheckFileExists = false,
 				FileName = di.Name + ".dir",
 				Filters = { allFilesFilters }
@@ -394,13 +475,17 @@ public sealed class MainWindow : Form {
 				return;
 			var dir = Path.Combine(Path.GetDirectoryName(sfd.FileName)!, di.Name);
 			int failed = 0;
-			var count = di.Extract((path, data) => {
+			var count = di.Extract((path, data) =>
+			{
 				var filename = Path.GetFileNameWithoutExtension(path);
 				path = Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(dir, path))!).FullName;
-				try {
+				try
+				{
 					var bitmap = GetDdsBitmap(data.Span);
 					bitmap.Save(Path.Combine(path, filename + ".png"), Eto.Drawing.ImageFormat.Png);
-				} catch {
+				}
+				catch
+				{
 					Interlocked.Increment(ref failed);
 				}
 			}, ".dds");
@@ -413,16 +498,19 @@ public sealed class MainWindow : Form {
 
 	private static readonly FileFilter allFilesFilters = new("All Files", "*");
 
-	private void OnDragEnter(object? sender, DragEventArgs e) {
+	private void OnDragEnter(object? sender, DragEventArgs e)
+	{
 		if (Index is not null && e.Data.ContainsUris)
 			e.Effects = DragEffects.Copy;
 	}
 
-	private void OnDragDrop(object? sender, DragEventArgs e) {
+	private void OnDragDrop(object? sender, DragEventArgs e)
+	{
 		if (Index is null || !e.Data.ContainsUris)
 			return;
 
-		try {
+		try
+		{
 			var uris = e.Data.Uris;
 			if (uris.Length != 1)
 				goto err;
@@ -434,17 +522,22 @@ public sealed class MainWindow : Form {
 				goto err;
 
 			int count;
-			using (var zip = ZipFile.OpenRead(path)) {
-				if (sender == GGPKTree) {
+			using (var zip = ZipFile.OpenRead(path))
+			{
+				if (sender == GGPKTree)
+				{
 					if (Ggpk is null)
 						throw ThrowHelper.Create<InvalidOperationException>("GGPK replacing is not supported in Steam/Epic mode");
 					else
 						count = GGPK.Replace(Ggpk.Root, zip.Entries);
-				} else
+				}
+				else
 					count = LibBundle3.Index.Replace(Index!, zip.Entries);
 			}
 			MessageBox.Show(this, $"Replaced {count} files!", "Done", MessageBoxType.Information);
-		} catch (Exception ex) {
+		}
+		catch (Exception ex)
+		{
 			MessageBox.Show(this, ex.ToString(), "Error", MessageBoxType.Error);
 		}
 
@@ -454,10 +547,13 @@ public sealed class MainWindow : Form {
 		return;
 	}
 
-	private static unsafe Bitmap GetDdsBitmap(ReadOnlySpan<byte> data) {
-		fixed (byte* p = data) {
+	private static unsafe Bitmap GetDdsBitmap(ReadOnlySpan<byte> data)
+	{
+		fixed (byte* p = data)
+		{
 			using var image = Dds.Create(new UnmanagedMemoryStream(p, data.Length), new(allocator: ArrayPoolAllocator.Instance));
-			var format = image.Format switch {
+			var format = image.Format switch
+			{
 				Pfim.ImageFormat.Rgba32 => PixelFormat.Format32bppRgba,
 				Pfim.ImageFormat.Rgb24 => PixelFormat.Format24bppRgb,
 				_ => throw ThrowHelper.Create<NotSupportedException>()
@@ -465,14 +561,27 @@ public sealed class MainWindow : Form {
 			return new Bitmap(image.Width, image.Height, format, ToColors(image.Data, format));
 		}
 
-		static IEnumerable<Color> ToColors(byte[] data, PixelFormat format) {
+		static IEnumerable<Color> ToColors(byte[] data, PixelFormat format)
+		{
 			var argb = format == PixelFormat.Format32bppRgba;
 			var bpp = argb ? 4 : 3;
 
-			for (var i = 0; i < data.Length; i += bpp) {
+			for (var i = 0; i < data.Length; i += bpp)
+			{
 				var pixel = MemoryMarshal.Read<int>(new(data, i, sizeof(int)));
 				yield return argb ? Color.FromArgb(pixel) : Color.FromRgb(pixel);
 			}
 		}
+	}
+
+	private string GetSourceBin(FileTreeItem fi)
+	{
+		if (fi is GGPKFileTreeItem)
+			return "Content.ggpk";
+
+		if (fi is BundleFileTreeItem bfi)
+			return bfi.BinFilePath;  // 就能显示 Bundles2/xxx.bundle.bin
+
+		return "未知";
 	}
 }
