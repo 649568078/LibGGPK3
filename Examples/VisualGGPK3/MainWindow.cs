@@ -532,7 +532,7 @@ public sealed class MainWindow : Form
 						count = GGPK.Replace(Ggpk.Root, zip.Entries);
 				}
 				else
-					count = LibBundle3.Index.Replace(Index!, zip.Entries);
+					count = LibBundle3.Index.ReplaceInPlace(Index!, zip.Entries);
 			}
 			MessageBox.Show(this, $"Replaced {count} files!", "Done", MessageBoxType.Information);
 		}

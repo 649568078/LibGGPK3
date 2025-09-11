@@ -643,6 +643,78 @@ public class Index : IDisposable {
 	}
 	#endregion Extract/Replace
 
+
+	public static int ReplaceInPlace(Index index, IEnumerable<ZipArchiveEntry> zipEntries, FileCallback? callback = null, bool saveIndex = true)
+	{
+		index.EnsureNotDisposed();
+		var count = 0;
+
+		// 先把 zipEntries 按名字 hash 映射，方便快速查找
+		var replacements = new Dictionary<ulong, ZipArchiveEntry>();
+		foreach (var e in zipEntries)
+		{
+			if (!e.FullName.EndsWith("/"))
+				replacements[index.NameHash(e.FullName)] = e;
+		}
+
+		// 按 bundle 归组，因为每次要重写整个 bundle
+		var grouped = index._Files.Values
+			.Where(fr => replacements.ContainsKey(fr.PathHash))
+			.GroupBy(fr => fr.BundleRecord);
+
+		foreach (var group in grouped)
+		{
+			var bundleRecord = group.Key;
+			if (!bundleRecord.TryGetBundle(out var bundle))
+				ThrowHelper.Throw<InvalidOperationException>("Cannot open bundle: " + bundleRecord.Path);
+
+			using (bundle)
+			{
+				// 1. 解压整个 bundle
+				var oldData = bundle.Read().ToArray();
+
+				// 2. 遍历 bundle 内所有文件，重新写一份 uncompressed data
+				var ms = new MemoryStream();
+				foreach (var fr in bundleRecord.Files.OrderBy(f => f.Offset))
+				{
+					if (replacements.TryGetValue(fr.PathHash, out var entry))
+					{
+						// 读取替换内容
+						byte[] newBytes = new byte[entry.Length];
+						using (var s = entry.Open())
+							s.ReadExactly(newBytes);
+
+						// 更新 offset/size
+						fr.Redirect(bundleRecord, (int)ms.Length, newBytes.Length);
+						ms.Write(newBytes);
+
+						++count;
+						if (callback?.Invoke(fr, entry.FullName) ?? false)
+							break;
+					}
+					else
+					{
+						// 原始内容
+						var bytes = oldData.AsSpan(fr.Offset, fr.Size).ToArray();
+						fr.Redirect(bundleRecord, (int)ms.Length, bytes.Length);
+						ms.Write(bytes);
+					}
+				}
+
+				var newData = ms.ToArray();
+
+				// 3. 整个 bundle 重新打包写回
+				bundle.Save(newData);
+			}
+		}
+
+		if (saveIndex && count != 0)
+			index.Save();
+
+		return count;
+	}
+
+
 	/// <summary>
 	/// Path to create bundle (Must end with slash)
 	/// </summary>

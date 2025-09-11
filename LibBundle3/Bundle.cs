@@ -321,7 +321,17 @@ public class Bundle : IDisposable {
 		}
 	}
 
-	protected internal virtual void EnsureNotDisposed() {
+	/// <summary>
+	/// Repack the bundle from fully uncompressed data
+	/// </summary>
+	public void Repack(byte[] newData, Oodle.CompressionLevel compressionLevel = Oodle.CompressionLevel.Normal)
+	{
+		// 调用现有的 Save 方法
+		Save(newData.AsSpan(), compressionLevel);
+	}
+
+	protected internal virtual void EnsureNotDisposed()
+	{
 		ObjectDisposedException.ThrowIf(!baseStream.CanRead, this);
 	}
 

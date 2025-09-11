@@ -42,14 +42,14 @@ class Program
             {
                 using var index = new LibBundle3.Index(inputPath, false);
                 index.ParsePaths();
-                return RunCommand(index, command, internalPath, filePath);
+                return RunCommand(index, isSteam, command, internalPath, filePath);
             }
             else
             {
                 using var ggpk = new BundledGGPK(inputPath, false);
                 var index = ggpk.Index;
                 index.ParsePaths();
-                return RunCommand(index, command, internalPath, filePath);
+                return RunCommand(index, isSteam, command, internalPath, filePath);
             }
         }
         catch (Exception ex)
@@ -72,7 +72,7 @@ class Program
         }
     }
 
-    static int RunCommand(LibBundle3.Index index, string command, string? internalPath, string? filePath)
+    static int RunCommand(LibBundle3.Index index, bool isSteam, string command, string? internalPath, string? filePath)
     {
         switch (command)
         {
@@ -153,11 +153,25 @@ class Program
                 Console.WriteLine($"[INFO] Replacing from zip: {internalPath}");
                 using (var zip = ZipFile.OpenRead(internalPath))
                 {
-                    int replacedCount = LibBundle3.Index.Replace(index, zip.Entries, (fr, path) =>
+                    int replacedCount;
+                    if (isSteam)
                     {
-                        Console.WriteLine($"[OK] Replaced: {path}");
-                        return false;
-                    });
+                        // Steam/Epic 模式，重新打包 bundle
+                        replacedCount = LibBundle3.Index.ReplaceInPlace(index, zip.Entries, (fr, path) =>
+                        {
+                            Console.WriteLine($"[OK] Replaced: {path}");
+                            return false;
+                        });
+                    }
+                    else
+                    {
+                        // GGPK 模式，走原有 Replace
+                        replacedCount = LibBundle3.Index.Replace(index, zip.Entries, (fr, path) =>
+                        {
+                            Console.WriteLine($"[OK] Replaced: {path}");
+                            return false;
+                        });
+                    }
                     Console.WriteLine($"Done! Replaced {replacedCount} files from zip.");
                 }
                 break;
@@ -181,11 +195,25 @@ class Program
                 using (var ms = new MemoryStream(plainZip, writable: false))
                 using (var zip = new ZipArchive(ms, ZipArchiveMode.Read, leaveOpen: false))
                 {
-                    int replacedCount = LibBundle3.Index.Replace(index, zip.Entries, (fr, path) =>
+                    int replacedCount;
+                    if (isSteam)
                     {
-                        Console.WriteLine($"[OK] Replaced: {path}");
-                        return false;
-                    });
+                        // Steam/Epic 模式
+                        replacedCount = LibBundle3.Index.ReplaceInPlace(index, zip.Entries, (fr, path) =>
+                        {
+                            Console.WriteLine($"[OK] Replaced: {path}");
+                            return false;
+                        });
+                    }
+                    else
+                    {
+                        // GGPK 模式
+                        replacedCount = LibBundle3.Index.Replace(index, zip.Entries, (fr, path) =>
+                        {
+                            Console.WriteLine($"[OK] Replaced: {path}");
+                            return false;
+                        });
+                    }
                     Console.WriteLine($"Done! Replaced {replacedCount} files from zenc.");
                 }
 
